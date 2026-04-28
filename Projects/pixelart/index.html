@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pixel Art Converter</title>
+  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <a href="/" class="back-btn">&#8592; Späť na portál</a>
+
+  <div class="bg-grid"></div>
+
+  <main>
+    <header>
+      <div class="logo-pixel">
+        <span></span><span></span><span></span>
+        <span></span><span></span><span></span>
+        <span></span><span></span><span></span>
+      </div>
+      <h1>Pixel Art<br><em>Converter</em></h1>
+      <p class="subtitle">Zmeň akýkoľvek obrázok na pixel art — priamo v prehliadači</p>
+    </header>
+
+    <div class="app-layout">
+
+      <!-- LEFT: Controls -->
+      <aside class="controls-panel">
+
+        <div class="upload-zone" id="uploadZone">
+          <div class="upload-icon">
+            <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+              <rect x="4" y="4" width="8" height="8" fill="currentColor" opacity="0.9"/>
+              <rect x="16" y="4" width="8" height="8" fill="currentColor" opacity="0.6"/>
+              <rect x="28" y="4" width="8" height="8" fill="currentColor" opacity="0.3"/>
+              <rect x="4" y="16" width="8" height="8" fill="currentColor" opacity="0.6"/>
+              <rect x="16" y="16" width="8" height="8" fill="currentColor"/>
+              <rect x="28" y="16" width="8" height="8" fill="currentColor" opacity="0.6"/>
+              <rect x="4" y="28" width="8" height="8" fill="currentColor" opacity="0.3"/>
+              <rect x="16" y="28" width="8" height="8" fill="currentColor" opacity="0.6"/>
+              <rect x="28" y="28" width="8" height="8" fill="currentColor" opacity="0.9"/>
+            </svg>
+          </div>
+          <p class="upload-title">Pretiahni obrázok sem</p>
+          <p class="upload-sub">alebo klikni pre výber</p>
+          <span class="upload-formats">PNG · JPG · WEBP · GIF</span>
+          <input type="file" id="fileInput" accept="image/*" hidden>
+        </div>
+
+        <div class="control-group">
+          <label class="control-label">
+            Veľkosť pixelov
+            <span class="value-badge" id="pixelSizeVal">10px</span>
+          </label>
+          <input type="range" id="pixelSize" min="2" max="100" value="10" step="1">
+          <div class="range-hints"><span>Jemné</span><span>Hrubé</span></div>
+        </div>
+
+        <div class="control-group">
+          <label class="control-label">Farebná paleta</label>
+          <div class="palette-grid">
+            <button class="palette-btn active" data-palette="original" title="Originál">
+              <span class="palette-preview original-preview"></span>
+              Originál
+            </button>
+            <button class="palette-btn" data-palette="retro" title="Retro">
+              <span class="palette-preview retro-preview"></span>
+              Retro
+            </button>
+            <button class="palette-btn" data-palette="grayscale" title="Čiernobiela">
+              <span class="palette-preview gray-preview"></span>
+              Sivá
+            </button>
+            <button class="palette-btn" data-palette="neon" title="Neon">
+              <span class="palette-preview neon-preview"></span>
+              Neon
+            </button>
+            <button class="palette-btn" data-palette="warm" title="Teplé farby">
+              <span class="palette-preview warm-preview"></span>
+              Teplá
+            </button>
+            <button class="palette-btn" data-palette="cool" title="Studené farby">
+              <span class="palette-preview cool-preview"></span>
+              Studená
+            </button>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label class="control-label">
+            Kontrast
+            <span class="value-badge" id="contrastVal">100%</span>
+          </label>
+          <input type="range" id="contrastSlider" min="50" max="200" value="100" step="1">
+        </div>
+
+        <button class="download-btn" id="downloadBtn" disabled>
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <rect x="2" y="2" width="4" height="4" fill="currentColor"/>
+            <rect x="7" y="2" width="4" height="4" fill="currentColor" opacity="0.6"/>
+            <rect x="12" y="2" width="4" height="4" fill="currentColor"/>
+            <rect x="2" y="12" width="4" height="4" fill="currentColor"/>
+            <rect x="7" y="12" width="4" height="4" fill="currentColor" opacity="0.6"/>
+            <rect x="12" y="12" width="4" height="4" fill="currentColor"/>
+            <rect x="4" y="7" width="10" height="3" fill="currentColor" opacity="0.8"/>
+          </svg>
+          Stiahnuť PNG
+        </button>
+
+      </aside>
+
+      <!-- RIGHT: Canvas Preview -->
+      <section class="preview-panel">
+        <div class="preview-header">
+          <span class="preview-label">Náhľad výsledku</span>
+          <div class="preview-meta" id="previewMeta"></div>
+        </div>
+
+        <div class="canvas-wrapper" id="canvasWrapper">
+          <div class="empty-state" id="emptyState">
+            <div class="empty-pixels">
+              <div class="ep-row"><div class="ep"></div><div class="ep lit"></div><div class="ep"></div><div class="ep lit"></div></div>
+              <div class="ep-row"><div class="ep lit"></div><div class="ep"></div><div class="ep lit"></div><div class="ep"></div></div>
+              <div class="ep-row"><div class="ep"></div><div class="ep lit"></div><div class="ep"></div><div class="ep lit"></div></div>
+              <div class="ep-row"><div class="ep lit"></div><div class="ep"></div><div class="ep lit"></div><div class="ep"></div></div>
+            </div>
+            <p>Nahraj obrázok a uvidíš výsledok tu</p>
+          </div>
+          <canvas id="canvas" hidden></canvas>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
