@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Java AI Neon Edge Filter</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            background: #0b0f19;
+            font-family: 'Roboto', sans-serif;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        .app-container {
+            background: #1a202c;
+            border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+            width: 90%;
+            max-width: 900px;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #2d3748;
+        }
+
+        .header {
+            background: #00549f;
+            color: white;
+            padding: 2rem;
+            text-align: center;
+            border-bottom: 2px solid #00aaff;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-weight: 700;
+            font-size: 2.2rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .header p {
+            margin: 10px 0 0 0;
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+
+        .content {
+            padding: 3rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+        }
+
+        .upload-area {
+            width: 100%;
+            border: 3px dashed #00aaff;
+            border-radius: 8px;
+            padding: 4rem 2rem;
+            text-align: center;
+            background: rgba(0, 170, 255, 0.05);
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .upload-area:hover,
+        .upload-area.dragover {
+            background: rgba(0, 170, 255, 0.15);
+            border-color: #fff;
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+        }
+
+        .comparison-container {
+            display: none;
+            width: 100%;
+            position: relative;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            margin-top: 1rem;
+            height: 500px;
+            background: #000;
+            border: 1px solid #4a5568;
+        }
+
+        .img-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        /* THE WOW EFFECT: A dramatic mock "Neon Edge/Thermal" filter applied via CSS */
+        .modified {
+            filter: invert(1) hue-rotate(180deg) saturate(500%) contrast(300%) sepia(50%) drop-shadow(0 0 10px #00aaff);
+            mix-blend-mode: screen;
+        }
+
+        .slider-handle {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 50%;
+            width: 4px;
+            background: #00aaff;
+            cursor: ew-resize;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 15px #00aaff;
+        }
+
+        .slider-handle::after {
+            content: '↔';
+            background: #00aaff;
+            color: #fff;
+            padding: 10px;
+            border-radius: 50%;
+            font-weight: bold;
+            box-shadow: 0 2px 10px rgba(0, 170, 255, 0.8);
+            font-size: 16px;
+            border: 2px solid #fff;
+        }
+
+        .clip-box {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 50%;
+            height: 100%;
+            overflow: hidden;
+            z-index: 5;
+            border-right: 2px solid rgba(255, 255, 255, 0.5);
+        }
+
+        .loader {
+            display: none;
+            border: 4px solid #2d3748;
+            border-top: 4px solid #00aaff;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+            margin: 2rem auto;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        #status-text {
+            text-align: center;
+            color: #00aaff;
+            font-weight: bold;
+            font-size: 1.2rem;
+            margin-top: 1rem;
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <a href="/"
+        style="position: absolute; top: 20px; left: 20px; color: #fff; text-decoration: none; font-size: 1.1rem; font-weight: 600; background: rgba(0, 170, 255, 0.2); padding: 10px 20px; border-radius: 50px; z-index: 1000; backdrop-filter: blur(5px); border: 1px solid rgba(0, 170, 255, 0.3); transition: 0.3s; display: flex; align-items: center; gap: 8px;"
+        onmouseover="this.style.background='rgba(0, 170, 255, 0.4)'"
+        onmouseout="this.style.background='rgba(0, 170, 255, 0.2)'">
+        <span>←</span> Späť na portál
+    </a>
+    <div class="app-container">
+        <div class="header">
+            <h1>Java Thermal/Neon Filter</h1>
+            <p>Mockup ukážka rapídnej transformácie obrazu</p>
+        </div>
+        <div class="content">
+            <div class="upload-area" id="drop-zone" onclick="document.getElementById('file-input').click()">
+                <div class="upload-icon">📸</div>
+                <h2>Nahraj fotku pre Java API spracovanie</h2>
+                <p>Potiahni fotku sem alebo klikni (JPG/PNG)</p>
+                <input type="file" id="file-input" accept="image/*" style="display: none;">
+            </div>
+
+            <div class="loader" id="loader"></div>
+            <div id="status-text">Odosielam na Java Backend...</div>
+
+            <div class="comparison-container" id="comparison">
+                <img class="img-layer original" id="img-original" src="" alt="Original">
+                <img class="img-layer modified" id="img-modified" src="" alt="Modified"
+                    style="clip-path: inset(0 50% 0 0);">
+                <div class="slider-handle" id="slider"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const loader = document.getElementById('loader');
+        const comparison = document.getElementById('comparison');
+        const imgOrig = document.getElementById('img-original');
+        const imgMod = document.getElementById('img-modified');
+        const slider = document.getElementById('slider');
+        const statusText = document.getElementById('status-text');
+
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => dropZone.addEventListener(evt, preventDefaults));
+        function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
+
+        dropZone.addEventListener('dragover', () => dropZone.classList.add('dragover'));
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+        dropZone.addEventListener('drop', (e) => {
+            dropZone.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+
+        fileInput.addEventListener('change', function () { handleFiles(this.files); });
+
+        function handleFiles(files) {
+            if (files.length === 0) return;
+            const fileURL = URL.createObjectURL(files[0]);
+
+            dropZone.style.display = 'none';
+            loader.style.display = 'block';
+            statusText.style.display = 'block';
+
+            // Mock backend delay
+            setTimeout(() => {
+                statusText.innerText = "Aplikujem model neurónovej siete...";
+                setTimeout(() => {
+                    loader.style.display = 'none';
+                    statusText.style.display = 'none';
+                    imgOrig.src = fileURL;
+                    imgMod.src = fileURL;
+                    comparison.style.display = 'block';
+                }, 1000);
+            }, 1000);
+        }
+
+        // Slider logic
+        let isSliding = false;
+        slider.addEventListener('mousedown', () => isSliding = true);
+        window.addEventListener('mouseup', () => isSliding = false);
+        window.addEventListener('mousemove', (e) => {
+            if (!isSliding) return;
+            const rect = comparison.getBoundingClientRect();
+            let x = e.clientX - rect.left;
+            x = Math.max(0, Math.min(x, rect.width));
+            const percent = (x / rect.width) * 100;
+            slider.style.left = percent + '%';
+            imgMod.style.clipPath = `inset(0 ${100 - percent}% 0 0)`;
+        });
+    </script>
+</body>
+
+</html>

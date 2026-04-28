@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>B-MSAP Projekty</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <header>
+        <div class="header-container">
+            <img src="{{ url_for('static', filename='UMIKT-colour.svg') }}" alt="UMIKT Logo" class="logo">
+            <div class="header-text">
+                <h1>B-MSAP Projekty</h1>
+                <p>Zoznam študentských multimediálnych webových služieb</p>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <main class="projects-grid">
+            {% for project in projects %}
+            <article class="project-card" onclick="window.location.href='/Projects/{{ project.id }}/'">
+                <div class="card-image-wrapper">
+                    <img src="/Projects/{{ project.id }}/thumbnail.png" alt="{{ project.name }} Thumbnail"
+                        class="project-thumbnail"
+                        onerror="this.onerror=null; this.src='https://via.placeholder.com/600x338?text=N%C3%A1h%C4%BEad';">
+                </div>
+                <div class="card-content">
+                    <h2 class="project-title">{{ project.name }}</h2>
+                    <div class="card-action">
+                        <span>Otvoriť projekt</span>
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                            <polyline points="12 5 19 12 12 19"></polyline>
+                        </svg>
+                    </div>
+                </div>
+            </article>
+            {% else %}
+            <div class="empty-state">
+                <p>Nenašli sa žiadne projekty v priečinku <code>Projects</code>. Viac informácií v README.</p>
+            </div>
+            {% endfor %}
+        </main>
+    </div>
+</body>
+
+</html>
