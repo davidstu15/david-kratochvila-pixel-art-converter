@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PIXELSYNTH // PIXEL ART STUDIO</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<a href="/" class="back-btn">&#8592; Späť</a>
+
+<!-- Particle canvas for download burst only -->
+<canvas id="particleCanvas"></canvas>
+
+<!-- Ambient atmosphere blobs -->
+<div class="blob blob1" id="blob1"></div>
+<div class="blob blob2" id="blob2"></div>
+<div class="blob blob3" id="blob3"></div>
+<div class="blob blob4" id="blob4"></div>
+
+<!-- BOOT SCREEN -->
+<div class="boot-screen" id="bootScreen">
+  <div class="boot-inner">
+    <div class="boot-logo">PIXELSYNTH</div>
+    <div class="boot-sub">// PIXEL ART STUDIO //</div>
+    <div class="boot-bar"><div class="boot-fill" id="bootFill"></div></div>
+    <div class="boot-status" id="bootStatus">LOADING...</div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div class="app" id="mainApp" style="display:none">
+
+  <!-- TOP BAR -->
+  <header class="topbar">
+    <div class="topbar-logo">
+      <div class="logo-mark">
+        <div class="lm-px"></div><div class="lm-px lit"></div><div class="lm-px"></div>
+        <div class="lm-px lit"></div><div class="lm-px"></div><div class="lm-px lit"></div>
+        <div class="lm-px"></div><div class="lm-px lit"></div><div class="lm-px"></div>
+      </div>
+      <div class="logo-text">
+        <span class="logo-name">PIXELSYNTH</span>
+        <span class="logo-tagline">PIXEL ART STUDIO</span>
+      </div>
+    </div>
+
+    <nav class="mode-tabs" role="tablist">
+      <button class="mode-tab active" data-mode="image" role="tab">
+        <span class="tab-icon">&#9707;</span> IMAGE
+      </button>
+      <button class="mode-tab" data-mode="video" role="tab">
+        <span class="tab-icon">&#9654;</span> VIDEO
+      </button>
+      <button class="mode-tab" data-mode="webcam" role="tab">
+        <span class="tab-icon">&#9673;</span> WEBCAM
+      </button>
+      <!-- 3D VIEW tab removed — replaced by PIXEL DEPTH overlay button -->
+    </nav>
+
+    <div class="topbar-right">
+      <div class="perf-chip">
+        <span class="perf-dot" id="perfDot"></span>
+        <span id="fpsDisplay">--</span> FPS
+        &nbsp;&middot;&nbsp;
+        <span id="renderTime">--</span> ms
+      </div>
+      <button class="icon-btn" id="fullscreenBtn" title="Fullscreen">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+          <rect x="0" y="0" width="4" height="1"/><rect x="0" y="0" width="1" height="4"/>
+          <rect x="10" y="0" width="4" height="1"/><rect x="13" y="0" width="1" height="4"/>
+          <rect x="0" y="13" width="4" height="1"/><rect x="0" y="10" width="1" height="4"/>
+          <rect x="10" y="13" width="4" height="1"/><rect x="13" y="10" width="1" height="4"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- WORKSPACE: left panel | canvas | right panel -->
+  <div class="workspace">
+
+    <!-- ═══ LEFT PANEL ═══ -->
+    <aside class="panel left-panel" id="ctrlPanel">
+      <div class="panel-scroll">
+
+        <!-- ── 1. INPUT ── -->
+        <section class="ctrl-group">
+          <h3 class="group-title">INPUT</h3>
+
+          <!-- Upload zone (image + video) -->
+          <div class="upload-zone" id="uploadZone" tabindex="0" role="button" aria-label="Upload file">
+            <input type="file" id="fileInput" accept="image/*,video/*" hidden>
+            <div class="upload-pixel-icon">
+              <div></div><div class="lit"></div><div></div>
+              <div class="lit"></div><div></div><div class="lit"></div>
+              <div></div><div class="lit"></div><div></div>
+            </div>
+            <p class="upload-title">DROP IMAGE OR VIDEO</p>
+            <p class="upload-sub">PNG &middot; JPG &middot; WEBP &middot; MP4 &middot; WebM</p>
+            <p class="upload-sub" style="opacity:.5;font-size:8px;margin-top:4px">or Ctrl+V to paste</p>
+          </div>
+
+          <!-- Webcam button (shown when webcam tab active) -->
+          <div id="webcamInputGroup" style="display:none">
+            <button class="action-btn green" id="startWebcam">&#9654; &nbsp;START WEBCAM</button>
+            <button class="action-btn red hidden" id="stopWebcam">&#9632; &nbsp;STOP WEBCAM</button>
+          </div>
+
+          <!-- Clear media button (hidden until media loaded) -->
+          <button class="action-btn clear-btn hidden" id="clearMedia">&#10005; &nbsp;CLEAR MEDIA</button>
+        </section>
+
+        <!-- ── 2. PIXEL SETTINGS ── -->
+        <section class="ctrl-group">
+          <h3 class="group-title">PIXEL SETTINGS</h3>
+
+          <div class="ctrl-row-wrap">
+            <span class="ctrl-label">PIXEL SIZE</span>
+            <span class="ctrl-badge" id="pixelSizeVal">10 px</span>
+          </div>
+          <input type="range" id="pixelSize" min="2" max="80" value="10" step="1" class="slider">
+          <div class="range-hints"><span>2</span><span>fine &#8594; chunky</span><span>80</span></div>
+
+          <div class="ctrl-row-wrap" style="margin-top:10px">
+            <span class="ctrl-label">CONTRAST</span>
+            <span class="ctrl-badge" id="contrastVal">100%</span>
+          </div>
+          <input type="range" id="contrastSlider" min="50" max="200" value="100" class="slider">
+
+          <div class="ctrl-row-wrap" style="margin-top:10px">
+            <span class="ctrl-label">SATURATION</span>
+            <span class="ctrl-badge" id="satVal">100%</span>
+          </div>
+          <input type="range" id="satSlider" min="0" max="300" value="100" class="slider">
+
+          <div class="ctrl-row-wrap" style="margin-top:10px">
+            <span class="ctrl-label">POSTERIZE</span>
+            <span class="ctrl-badge" id="posterVal">OFF</span>
+          </div>
+          <input type="range" id="posterSlider" min="0" max="8" value="0" step="1" class="slider">
+        </section>
+
+        <!-- ── 3. DITHERING ── -->
+        <section class="ctrl-group">
+          <h3 class="group-title">DITHERING</h3>
+          <div class="btn-grid cols3">
+            <button class="choice-btn active" data-dither="none">None</button>
+            <button class="choice-btn" data-dither="floyd">Floyd-S</button>
+            <button class="choice-btn" data-dither="bayer">Bayer</button>
+            <button class="choice-btn" data-dither="atkinson">Atkinson</button>
+            <button class="choice-btn" data-dither="ordered">Ordered</button>
+            <button class="choice-btn" data-dither="error">Sierra</button>
+          </div>
+        </section>
+
+        <!-- ── 4. COLOR PALETTE ── -->
+        <section class="ctrl-group">
+          <h3 class="group-title">PALETTE</h3>
+          <div class="palette-list">
+            <button class="pal-btn active" data-palette="original">
+              <span class="pal-swatch" style="background:linear-gradient(90deg,#f87171,#fbbf24,#34d399,#60a5fa)"></span>
+              <span>Original</span>
+            </button>
+            <button class="pal-btn" data-palette="grayscale">
+              <span class="pal-swatch" style="background:linear-gradient(90deg,#111,#666,#bbb,#fff)"></span>
+              <span>Grayscale</span>
+            </button>
+            <button class="pal-btn" data-palette="gameboy">
+              <span class="pal-swatch" style="background:linear-gradient(90deg,#0f380f,#306230,#8bac0f,#9bbc0f)"></span>
+              <span>Game Boy</span>
+            </button>
+            <button class="pal-btn" data-palette="retro">
+              <span class="pal-swatch" style="background:linear-gradient(90deg,#8b0000,#ff4500,#ffd700,#228b22)"></span>
+              <span>Retro</span>
+            </button>
+            <button class="pal-btn" data-palette="neon">
+              <span class="pal-swatch" style="background:linear-gradient(90deg,#ff0080,#ff00ff,#00ffff,#00ff00)"></span>
+              <span>Neon</span>
+            </button>
+            <button class="pal-btn" data-palette="thermal">
+              <span class="pal-swatch" style="background:linear-gradient(90deg,#000,#00f,#0f0,#ff0,#f00)"></span>
+              <span>Thermal</span>
+            </button>
+            <button class="pal-btn" data-palette="matrix">
+              <span class="pal-swatch" style="background:linear-gradient(90deg,#000,#003300,#00ff41)"></span>
+              <span>Matrix</span>
+            </button>
+            <button class="pal-btn" data-palette="warm">
+              <span class="pal-swatch" style="background:linear-gradient(90deg,#7b1c1c,#e67e22,#f1c40f)"></span>
+              <span>Warm</span>
+            </button>
+            <button class="pal-btn" data-palette="cool">
+              <span class="pal-swatch" style="background:linear-gradient(90deg,#0d1b2a,#2980b9,#85c1e9)"></span>
+              <span>Cool</span>
+            </button>
+            <button class="pal-btn" data-palette="c64">
+              <span class="pal-swatch" style="background:linear-gradient(90deg,#000,#6c5eb5,#fff,#a1683c)"></span>
+              <span>C64</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- ── 5. DEVICE MODE ── -->
+        <section class="ctrl-group">
+          <h3 class="group-title">DEVICE MODE</h3>
+          <div class="btn-grid cols3">
+            <button class="choice-btn active" data-device="none">Raw</button>
+            <button class="choice-btn" data-device="gameboy">Game Boy</button>
+            <button class="choice-btn" data-device="crt">CRT</button>
+            <button class="choice-btn" data-device="vhs">VHS</button>
+            <button class="choice-btn" data-device="arcade">Arcade</button>
+            <button class="choice-btn" data-device="ps1">PS1</button>
+          </div>
+        </section>
+
+        <!-- ── 6. RETRO FX ── -->
+        <section class="ctrl-group">
+          <h3 class="group-title">RETRO FX</h3>
+          <div class="toggle-list">
+            <label class="toggle-row">
+              <input type="checkbox" id="fxScanlines">
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              <span class="toggle-label">Scanlines</span>
+            </label>
+            <label class="toggle-row">
+              <input type="checkbox" id="fxChroma">
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              <span class="toggle-label">Chroma Split</span>
+            </label>
+            <label class="toggle-row">
+              <input type="checkbox" id="fxCrt">
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              <span class="toggle-label">CRT Warp</span>
+            </label>
+            <label class="toggle-row">
+              <input type="checkbox" id="fxNoise">
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              <span class="toggle-label">Film Noise</span>
+            </label>
+            <label class="toggle-row">
+              <input type="checkbox" id="fxEdge">
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              <span class="toggle-label">Edge Enhance</span>
+            </label>
+          </div>
+
+          <div class="ctrl-row-wrap" style="margin-top:10px">
+            <span class="ctrl-label">CHROMA AMT</span>
+            <span class="ctrl-badge" id="chromaVal">3 px</span>
+          </div>
+          <input type="range" id="chromaSlider" min="0" max="20" value="3" class="slider">
+        </section>
+
+        <!-- ── 7. EXPORT ── -->
+        <section class="ctrl-group" style="padding-bottom:20px">
+          <h3 class="group-title">EXPORT</h3>
+          <div class="btn-grid cols2">
+            <button class="export-btn primary" id="exportPng">&#11015; PNG</button>
+            <button class="export-btn" id="exportSprite">&#9633; SPRITE</button>
+            <button class="export-btn" id="exportPalette">&#9632; PALETTE</button>
+            <button class="export-btn" id="exportCompare">&#8646; COMPARE</button>
+          </div>
+        </section>
+
+      </div><!-- end panel-scroll -->
+    </aside>
+
+    <!-- ═══ CENTER CANVAS ═══ -->
+    <main class="canvas-main" id="canvasMain">
+
+      <!-- Before/After compare overlay -->
+      <div class="compare-wrap hidden" id="compareWrap">
+        <canvas id="compareOriginal"></canvas>
+        <canvas id="compareProcessed"></canvas>
+        <div class="compare-divider" id="compareSlider">
+          <div class="compare-handle">&#10231;</div>
+        </div>
+        <span class="compare-tag left">ORIGINAL</span>
+        <span class="compare-tag right">PROCESSED</span>
+      </div>
+
+      <!-- PIXEL DEPTH HUD — appears inside output-container when depth mode is ON -->
+      <!-- No separate canvas — depth renders directly onto outputCanvas -->
+
+      <!-- Main output -->
+      <div class="output-container" id="outputContainer">
+        <video id="videoEl" style="display:none" playsinline></video>
+        <video id="webcamEl" style="display:none" autoplay playsinline muted></video>
+        <canvas id="outputCanvas" style="display:none"></canvas>
+
+        <!-- CRT overlay (scanlines on top of canvas) -->
+        <div class="crt-overlay" id="crtOverlay"></div>
+
+        <!-- Empty state (hidden after media loads) -->
+        <div class="empty-state" id="emptyState">
+          <div class="empty-grid">
+            <div></div><div class="e-lit"></div><div></div><div class="e-lit"></div>
+            <div class="e-lit"></div><div></div><div class="e-lit"></div><div></div>
+            <div></div><div class="e-lit"></div><div></div><div class="e-lit"></div>
+            <div class="e-lit"></div><div></div><div class="e-lit"></div><div></div>
+          </div>
+          <p class="empty-title">READY TO PROCESS</p>
+          <p class="empty-sub">Drop an image or video &middot; paste from clipboard &middot; or use webcam</p>
+        </div>
+      </div>
+
+      <!-- DEPTH MODE HUD — shown when depth mode is active -->
+      <div class="depth-hud-bar hidden" id="depthHud">
+        <div class="depth-hud-left">
+          <span class="dhud-dot"></span>
+          <span class="dhud-title">DEPTH MODE</span>
+          <span class="dhud-hint">move cursor &middot; interact with pixels</span>
+        </div>
+        <div class="depth-hud-right">
+          <span class="dhud-stat" id="depthStat">--</span>
+          <button class="dhud-close" id="closeDepth">&#10005; EXIT DEPTH</button>
+        </div>
+      </div>
+
+      <!-- Video transport bar -->
+      <div class="transport-bar hidden" id="videoControls">
+        <button class="t-btn" id="vidPlay">&#9654;</button>
+        <button class="t-btn" id="vidPause">&#9646;&#9646;</button>
+        <button class="t-btn" id="vidLoop" title="Toggle loop">&#8635;</button>
+        <input type="range" id="vidScrub" min="0" max="100" value="0" class="vid-scrub">
+        <span class="vid-time" id="vidTime">0:00 / 0:00</span>
+        <span class="fps-tag" id="vidFps">-- FPS</span>
+      </div>
+
+      <!-- Histogram bar -->
+      <canvas class="histogram-bar hidden" id="histogramPanel" width="400" height="60"></canvas>
+
+    </main>
+
+    <!-- ═══ RIGHT PANEL ═══ -->
+    <aside class="panel right-panel" id="infoPanel">
+      <div class="panel-scroll">
+
+        <!-- Stats -->
+        <section class="ctrl-group">
+          <h3 class="group-title">RENDER STATS</h3>
+          <div class="stat-list">
+            <div class="stat-row"><span class="stat-k">Output</span><span class="stat-v" id="statSize">--</span></div>
+            <div class="stat-row"><span class="stat-k">Blocks</span><span class="stat-v" id="statBlocks">--</span></div>
+            <div class="stat-row"><span class="stat-k">Colors</span><span class="stat-v" id="statColors">--</span></div>
+            <div class="stat-row"><span class="stat-k">Render</span><span class="stat-v" id="statRender">--</span></div>
+          </div>
+        </section>
+
+        <!-- Dominant colors -->
+        <section class="ctrl-group">
+          <h3 class="group-title">PALETTE ANALYSIS</h3>
+          <div class="swatch-row" id="dominantColors">
+            <span class="dom-placeholder">awaiting image...</span>
+          </div>
+        </section>
+
+        <!-- View mode -->
+        <section class="ctrl-group">
+          <h3 class="group-title">VIEW</h3>
+          <div class="btn-grid cols1">
+            <button class="choice-btn active" id="viewNormal">Normal</button>
+            <button class="choice-btn" id="viewCompare">Before / After</button>
+            <button class="choice-btn" id="viewHistogram">Histogram</button>
+          </div>
+        </section>
+
+        <!-- Pixel Depth View -->
+        <section class="ctrl-group">
+          <h3 class="group-title">PIXEL DEPTH</h3>
+          <p class="depth-description">Depth view is synchronized with the main renderer. Pixel size, palette and dithering carry over directly.</p>
+          <div class="ctrl-row-wrap" style="margin-top:10px">
+            <span class="ctrl-label">DEPTH AMT</span>
+            <span class="ctrl-badge" id="depthAmtVal">40</span>
+          </div>
+          <input type="range" id="depthAmt" min="10" max="80" value="40" step="5" class="slider">
+          <div class="range-hints"><span>flat</span><span>deep</span></div>
+          <div class="ctrl-row-wrap" style="margin-top:10px">
+            <span class="ctrl-label">CURSOR RADIUS</span>
+            <span class="ctrl-badge" id="depthRadiusVal">120</span>
+          </div>
+          <input type="range" id="depthRadius" min="40" max="250" value="120" step="10" class="slider">
+          <button class="depth-launch-btn" id="openDepth" disabled>&#9674; &nbsp;ENABLE DEPTH MODE</button>
+
+          <!-- Disperse / Reform — only visible in depth mode -->
+          <div class="disperse-controls hidden" id="disperseControls">
+            <div class="btn-grid cols2" style="margin-top:6px">
+              <button class="choice-btn" id="disperseBtn">&#10041; DISPERSE</button>
+              <button class="choice-btn" id="reformBtn">&#9670; REFORM</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Info card -->
+        <section class="ctrl-group info-card">
+          <h3 class="group-title">ABOUT</h3>
+          <p class="info-text">Realtime pixel-art processing studio. All processing runs locally in your browser &mdash; no uploads, no server.</p>
+          <div class="info-badges">
+            <span class="info-badge">100% Offline</span>
+            <span class="info-badge">Client-Side</span>
+            <span class="info-badge">Canvas API</span>
+          </div>
+        </section>
+
+      </div>
+    </aside>
+
+  </div><!-- end workspace -->
+</div><!-- end app -->
+
+<script src="script.js"></script>
+</body>
+</html>
