@@ -8,7 +8,7 @@
 </head>
 <body>
 
-<a href="/" class="back-btn">&#8592; Späť</a>
+<a href="/" class="back-btn">&#8592; Späť na portál</a>
 
 <!-- Particle canvas for download burst only -->
 <canvas id="particleCanvas"></canvas>
@@ -383,12 +383,13 @@
           <input type="range" id="depthRadius" min="40" max="250" value="120" step="10" class="slider">
           <button class="depth-launch-btn" id="openDepth" disabled>&#9674; &nbsp;ENABLE DEPTH MODE</button>
 
-          <!-- Disperse / Reform — only visible in depth mode -->
+          <!-- Disperse / Reform / Magnet — only visible in depth mode -->
           <div class="disperse-controls hidden" id="disperseControls">
             <div class="btn-grid cols2" style="margin-top:6px">
               <button class="choice-btn" id="disperseBtn">&#10041; DISPERSE</button>
               <button class="choice-btn" id="reformBtn">&#9670; REFORM</button>
             </div>
+            <button class="choice-btn magnet-btn" id="magnetBtn" style="width:100%;margin-top:4px">&#9672; MAGNET ATTRACT</button>
           </div>
         </section>
 

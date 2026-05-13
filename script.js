@@ -70,6 +70,7 @@ const STATE = {
   histogramMode:  false,
   depthMode:      false,   // when true, render() draws depth instead of flat pixels
   disperseMode:   false,   // when true, pixels fly apart as particles
+  magnetMode:     false,   // when true, cursor magnetically pulls pixels XY
 };
 
 /* ══ PALETTES ═══════════════════════════════════════════ */
@@ -273,6 +274,7 @@ function bindAll() {
   on('closeDepth', 'click', closeDepthView);
   on('disperseBtn','click', activateDisperse);
   on('reformBtn',  'click', activateReform);
+  on('magnetBtn',  'click', toggleMagnet);
   on('clearMedia', 'click', clearMedia);
 
   // Fullscreen
@@ -763,6 +765,7 @@ function clearMedia() {
   // Stop depth
   if (STATE.depthMode) closeDepthView();
   STATE.disperseMode = false;
+  STATE.magnetMode = false;
   _stopDepthImageLoop();
 
   // Clear state
@@ -1094,11 +1097,14 @@ function openDepthView() {
 function closeDepthView() {
   STATE.depthMode = false;
   STATE.disperseMode = false;
+  STATE.magnetMode = false;
   _stopDepthImageLoop();
 
   hide('disperseControls');
   const dispBtn = document.getElementById('disperseBtn');
   if (dispBtn) dispBtn.classList.remove('dispersed');
+  const magBtn = document.getElementById('magnetBtn');
+  if (magBtn) magBtn.classList.remove('dispersed');
 
   const hud = document.getElementById('depthHud');
   if (hud) hud.classList.add('hidden');
@@ -1446,19 +1452,30 @@ function renderDepth(oc, d, bW, bH, px, dispW, dispH, isLiveMedia) {
                     : px <= 4  ? 0.0
                     : (px - 4) / 12;   // 0..1 over 4..16px range
 
+  // ── Perceptual density compensation ─────────────────────
+  // At small px, each block is tiny — a 4px displacement on a
+  // 6px block looks the same as a 40px displacement on a 20px block.
+  // We need displacement to scale INVERSELY with pixel density
+  // so the perceived motion strength stays constant regardless of px.
+  //
+  // pxNorm = px / 16 (reference = 16px block)
+  // densityBoost = 16 / max(px, 4) — small px → larger displacement
+  //
+  // BUT: for depth gaps we still want denseFactor (small px = no gaps).
+  // For XY motion (parallax, magnet) we want density-compensated values.
+  const pxRef          = 16;
+  const densityBoost   = Math.min(4.0, pxRef / Math.max(px, 5));
+
   const gap    = denseFactor > 0 ? Math.max(1, Math.round(px * 0.12 * denseFactor)) : 0;
   const cell   = px + gap;
   const startX = Math.floor((dispW - bW * cell) / 2);
   const startY = Math.floor((dispH - bH * cell) / 2);
 
-  // Scale all depth offsets by denseFactor — small pixels barely move
-  const parallaxScale  = denseFactor * 2.2;
-  const verticalOffset = denseFactor * 0.18;
+  const parallaxScale  = 4.8 * densityBoost * Math.max(0.15, denseFactor);
+  const verticalOffset = 0.26 * densityBoost * Math.max(0.1, denseFactor);
   const shadowScale    = denseFactor * 0.32;
-  const highlightOn    = denseFactor > 0.2;
-
-  // For very small pixels, glow is also reduced
-  const glowScale = denseFactor;
+  const highlightOn    = denseFactor > 0.15;
+  const glowScale      = denseFactor;
 
   const hue  = STATE.syncedHues[0] || 258;
   const maxD = DEPTH.depthAmt;
@@ -1524,8 +1541,9 @@ function renderDepth(oc, d, bW, bH, px, dispW, dispH, isLiveMedia) {
         ? Math.sin(depthBreath + col * 0.3 + row * 0.22) * breathAmp
         : 0;
 
-      // ── Target Z ──
-      let targetZ = _dBaseZ[idx] + influence * 0.95 + wavePush + breath;
+      // ── Target Z — strong cursor push for clearly visible depth ──
+      // influence*2.2 (was 1.5): foreground pixels visibly protrude
+      let targetZ = _dBaseZ[idx] + influence * 2.2 + wavePush + breath;
       if (targetZ < 0) targetZ = 0;
       if (targetZ > 1.4) targetZ = 1.4;
 
@@ -1547,11 +1565,9 @@ function renderDepth(oc, d, bW, bH, px, dispW, dispH, isLiveMedia) {
       const curZ    = _dCurZ[idx];
       const depthPx = curZ * maxD;
 
-      // ── Parallax offset (scaled by denseFactor) ──────────
-      // At denseFactor=0 (px≤4): no offset → pixels stay on grid
-      // At denseFactor=1 (px≥16): full parallax separation
-      const sx = (baseSX + depthTiltX*depthPx*parallaxScale + _dDriftX[idx] * denseFactor) | 0;
-      const sy = (baseSY + depthTiltY*depthPx*parallaxScale + _dDriftY[idx] * denseFactor - depthPx*verticalOffset) | 0;
+      // ── Final screen position ─────────────────────────────
+      const sx = (baseSX + depthTiltX*depthPx*parallaxScale + _dDriftX[idx]*denseFactor) | 0;
+      const sy = (baseSY + depthTiltY*depthPx*parallaxScale + _dDriftY[idx]*denseFactor - depthPx*verticalOffset) | 0;
 
       // ── Dynamic lighting — depth + specular reflection ──
       // lift: raised pixels catch ambient light
@@ -1782,6 +1798,9 @@ let _dispersing  = false;
 let _reforming   = false;
 let _dispAnimFrame = null;
 
+let _dispTime  = 0;    // time accumulator for turbulence
+let _dispPhase = null; // Float32Array — per-particle turbulence phase
+
 function activateDisperse() {
   if (!STATE.depthMode) return;
   if (!_liveColours || _dBW === 0) return;
@@ -1795,33 +1814,42 @@ function activateDisperse() {
 
   const bW    = _dBW, bH = _dBH;
   const px    = STATE.pixelSize;
-  const gap   = px >= 16 ? Math.max(1,Math.round(px*0.12)) : px<=4 ? 0 : Math.max(1,Math.round(px*0.12*((px-4)/12)));
+  const gap   = px >= 16 ? Math.max(1, Math.round(px*0.12))
+              : px <= 4  ? 0
+              : Math.max(1, Math.round(px*0.12*((px-4)/12)));
   const cell  = px + gap;
   const dispW = outputCanvas ? outputCanvas.width  : 600;
   const dispH = outputCanvas ? outputCanvas.height : 400;
   const startX = Math.floor((dispW - bW * cell) / 2);
   const startY = Math.floor((dispH - bH * cell) / 2);
 
-  // Adaptive step — cap at 4000 particles
-  const maxPart = 4000;
-  const dispStep = bW * bH > maxPart ? Math.ceil(Math.sqrt(bW * bH / maxPart)) : 1;
+  // Adaptive particle count — cap at 3000 for stable FPS
+  const maxPart  = 3000;
+  const dispStep = bW * bH > maxPart
+    ? Math.ceil(Math.sqrt(bW * bH / maxPart))
+    : 1;
   const cols = Math.ceil(bW / dispStep);
   const rows = Math.ceil(bH / dispStep);
-  _dispN   = cols * rows;
+  _dispN    = cols * rows;
   _dispPxSz = px;
 
   _dispPX = new Float32Array(_dispN);
   _dispPY = new Float32Array(_dispN);
   _dispVX = new Float32Array(_dispN);
   _dispVY = new Float32Array(_dispN);
-  _dispHX = new Float32Array(_dispN);
-  _dispHY = new Float32Array(_dispN);
+  _dispHX = new Float32Array(_dispN);  // home X
+  _dispHY = new Float32Array(_dispN);  // home Y
   _dispR  = new Uint8Array(_dispN);
   _dispG  = new Uint8Array(_dispN);
   _dispB  = new Uint8Array(_dispN);
   _dispZ  = new Float32Array(_dispN);
 
-  const cx = dispW * 0.5, cy = dispH * 0.5;
+  // Also store a per-particle phase for turbulence so each
+  // particle moves on a slightly different sine cycle.
+  // Reuse _dispHX/Y as they don't change — store phase in a
+  // separate small array.
+  if (!_dispPhase || _dispPhase.length < _dispN) _dispPhase = new Float32Array(_dispN);
+  else { for (let k=0; k<_dispN; k++) _dispPhase[k] = 0; }
 
   let pi = 0;
   for (let row = 0; row < bH; row += dispStep) {
@@ -1837,16 +1865,21 @@ function activateDisperse() {
       _dispPX[pi] = hx;
       _dispPY[pi] = hy;
 
-      // Outward burst velocity
-      const angle = Math.atan2(hy - cy, hx - cx) + (Math.random()-0.5)*0.8;
-      const speed = 2 + Math.random() * 6 + _dBaseZ[idx] * 4;
+      // ── Initial burst — visible dissolve, not explosion ──
+      // Target: particles travel 40–120px from home then float.
+      // HOME_K=0.0025 (weaker spring) allows larger equilibrium.
+      // speed range 0.8–3.5 → clear separation while staying readable.
+      const cx    = dispW * 0.5, cy = dispH * 0.5;
+      const angle = Math.atan2(hy - cy, hx - cx) + (Math.random()-0.5) * 2.0;
+      const speed = 0.8 + Math.random() * 2.7 + _dBaseZ[idx] * 1.8;
       _dispVX[pi] = Math.cos(angle) * speed;
       _dispVY[pi] = Math.sin(angle) * speed;
 
-      _dispR[pi] = _liveColours[ci];
-      _dispG[pi] = _liveColours[ci+1];
-      _dispB[pi] = _liveColours[ci+2];
-      _dispZ[pi] = _dBaseZ[idx] || 0.3;
+      _dispR[pi]     = _liveColours[ci];
+      _dispG[pi]     = _liveColours[ci+1];
+      _dispB[pi]     = _liveColours[ci+2];
+      _dispZ[pi]     = _dBaseZ[idx] || 0.3;
+      _dispPhase[pi] = Math.random() * Math.PI * 2;  // random turbulence phase
       pi++;
     }
   }
@@ -1865,74 +1898,217 @@ function activateReform() {
   if (btn) btn.classList.remove('dispersed');
 }
 
+/* ── MAGNET MODE ───────────────────────────────────────────
+   Magnet mode is a depth-mode sub-mode. It does NOT create
+   particles — it keeps the normal depth renderer active but
+   adds an XY offset to pixel blocks near the cursor.
+
+/* ── MAGNET MODE ───────────────────────────────────────────
+   Magnet mode switches cursor interaction for DISPERSE particles.
+   Default (off): cursor repels nearby particles.
+   Magnet (on):   cursor attracts + swirls particles.
+      ATTRACT = pull toward cursor along the radius vector.
+      SWIRL   = tangential force (⊥ to attract) → orbital motion.
+   Home spring still runs — particles never permanently escape.
+── */
+function toggleMagnet() {
+  STATE.magnetMode = !STATE.magnetMode;
+  const btn = document.getElementById('magnetBtn');
+  if (btn) btn.classList.toggle('dispersed', STATE.magnetMode);
+}
+
+/* ── _runDisperseLoop — holographic floating cloud physics ──
+   MOTION MODEL:
+   ─────────────
+   Three forces act on each particle simultaneously:
+
+   1. HOME SPRING — soft magnetic pull toward home position.
+      Always active (even when not reforming), but weak.
+      This ensures particles never escape permanently.
+        homeForce = (home - pos) × HOME_K
+      HOME_K is small (0.004) when dispersing → barely felt.
+      HOME_K becomes large (0.09) when reforming → glides home.
+
+   2. TURBULENCE — per-particle sine oscillation on XY axes.
+      Each particle has a unique phase (_dispPhase[i]) so they
+      all move independently. The turbulence amplitude scales
+      with distance from home — particles near home barely move.
+        turbX = sin(time*TRB_FREQ + phase) × TRB_AMP × distFactor
+        turbY = cos(time*TRB_FREQ*0.73 + phase) × TRB_AMP × distFactor
+      The 0.73 multiplier makes X/Y axes non-periodic.
+
+   3. CURSOR REPEL — localized push away from cursor.
+      Quadratic falloff, same as depth mode.
+      When reforming, cursor slightly ATTRACTS instead (guides).
+
+   DAMPING:
+   ────────
+   _dispVX/Y *= DRAG (0.88) every frame — fast enough to prevent
+   runaway acceleration, slow enough that turbulence is visible.
+   No gravity — the world is weightless.
+
+   MAX DISPLACEMENT:
+   ─────────────────
+   If |pos - home| > MAX_DISP, the home spring force is boosted
+   proportionally to pull the particle back. This is a soft wall:
+     boost = max(1, dist/MAX_DISP)²
+   The particle can momentarily exceed MAX_DISP but is smoothly
+   pulled back. This eliminates particles escaping off-screen.
+
+   REFORM:
+   ───────
+   HOME_K jumps from 0.004 → 0.09. Damping also increases
+   (REF_DAMP 0.78 vs DRAG 0.88). Turbulence amplitude drops
+   to zero so particles glide cleanly home. The reform spring
+   is critically damped at K=0.09, D=0.78 — slight overshoot
+   then smooth settle. "allHome" counts particles within 1.5px
+   of home with |vel| < 0.12.
+── */
 function _runDisperseLoop() {
   if (!STATE.disperseMode || !STATE.depthMode) return;
 
   _dispAnimFrame = requestAnimationFrame(_runDisperseLoop);
-
   if (!outCtx || !outputCanvas) return;
+
   const dispW = outputCanvas.width, dispH = outputCanvas.height;
   const px    = _dispPxSz;
   const hue   = STATE.syncedHues[0] || 258;
   const rad   = DEPTH.radius;
   const rad2  = rad * rad;
 
+  // Time advances regardless of mode — used for turbulence
+  _dispTime += 0.010;   // slower time = lower-frequency drift
+
+  // ── Physics constants ──────────────────────────────────
+  // DRAG 0.91: energy dissipates within ~25 frames of burst
+  // HOME_K 0.0025: weaker spring → larger equilibrium displacement
+  // TRB_AMP 0.18: visible low-frequency hover (not buzzing)
+  // TRB_FREQ 0.35: slow meditative drift
+  // MAX_DISP: 45% of canvas — particles can clearly separate
+  const DRAG      = 0.91;
+  const HOME_K    = _reforming ? 0.10  : 0.0025;
+  const HOME_DAMP = _reforming ? 0.76  : DRAG;
+  const TRB_AMP   = _reforming ? 0.0   : 0.18;
+  const TRB_FREQ  = 0.35;
+  const MAX_DISP  = Math.max(dispW, dispH) * 0.45;
+
   outCtx.fillStyle = '#03030a';
   outCtx.fillRect(0, 0, dispW, dispH);
 
-  const DRAG      = 0.92;
-  const REF_SPRING = 0.08;
-  const REF_DAMP  = 0.82;
-
   let allHome = 0;
-  const glowP = [];   // glow particle list
+  const glowP = [];
 
   for (let i = 0; i < _dispN; i++) {
-    // ── Physics ──
-    if (_reforming) {
-      // Spring pull toward home position
-      const fxR = (_dispHX[i] - _dispPX[i]) * REF_SPRING;
-      const fyR = (_dispHY[i] - _dispPY[i]) * REF_SPRING;
-      _dispVX[i] += fxR;  _dispVX[i] *= REF_DAMP;
-      _dispVY[i] += fyR;  _dispVY[i] *= REF_DAMP;
-    } else {
-      // Drag + gravity drift
-      _dispVX[i] *= DRAG;
-      _dispVY[i] *= DRAG;
-      _dispVY[i] += 0.04;  // slight gravity
+    // ── Distance from home ──────────────────────────────
+    const dxH = _dispHX[i] - _dispPX[i];
+    const dyH = _dispHY[i] - _dispPY[i];
+    const distHome = Math.sqrt(dxH*dxH + dyH*dyH);
+
+    // ── Soft displacement cap — boost spring when too far ──
+    // Beyond MAX_DISP the home force grows quadratically,
+    // creating an invisible elastic boundary.
+    const overreach = distHome > MAX_DISP
+      ? (distHome / MAX_DISP) * (distHome / MAX_DISP)
+      : 1.0;
+    const effectiveK = HOME_K * overreach;
+
+    // ── 1. Home spring force ─────────────────────────────
+    _dispVX[i] += dxH * effectiveK;
+    _dispVY[i] += dyH * effectiveK;
+
+    // ── 2. Turbulence — weightless organic float ─────────
+    // distFactor makes far particles move more than near ones.
+    // Clamped at 1.0 so fully displaced = full turbulence.
+    if (TRB_AMP > 0) {
+      const distFactor = Math.min(1.0, distHome / 60);
+      const ph = _dispPhase[i];
+      _dispVX[i] += Math.sin(_dispTime * TRB_FREQ + ph)        * TRB_AMP * distFactor;
+      _dispVY[i] += Math.cos(_dispTime * TRB_FREQ * 0.73 + ph) * TRB_AMP * distFactor;
     }
 
-    // ── Cursor influence ──
+    // ── 3. Cursor interaction ─────────────────────────────
+    //
+    // Two modes controlled by STATE.magnetMode:
+    //
+    // REPEL (default): cursor pushes particles away — preserves
+    //   composition feel; particles avoid cursor.
+    //
+    // MAGNET: cursor attracts + swirls particles.
+    //   ATTRACT force: pulls particle toward cursor.
+    //     F_attract = (cursor - particle) / dist × influence × ATTR_STR
+    //   SWIRL force: tangential (perpendicular to attract vector).
+    //     Rotates the attract vector 90° and scales by influence.
+    //     F_swirl = (-dy/dist, dx/dist) × influence × SWIRL_STR
+    //     This creates clockwise orbit; sign flip → counterclockwise.
+    //   Combined: particles spiral inward toward cursor and orbit
+    //   around it, slowed by drag + home spring. The result feels
+    //   like ferrofluid responding to a magnet.
+    //
+    // Both modes use the same quadratic falloff (t = 1 - d/rad; t²)
+    // so interaction is always local and smooth at the radius edge.
     const mdx = _dispPX[i] - depthMouseX;
     const mdy = _dispPY[i] - depthMouseY;
     const d2  = mdx*mdx + mdy*mdy;
     let infl  = 0;
     if (d2 < rad2 && depthMouseX > 0) {
-      const d = Math.sqrt(d2);
-      const t = 1 - d/rad;
-      infl = t * t;
-      // Repel when dispersing, attract when reforming
-      const dir = _reforming ? -0.8 : 1.2;
-      _dispVX[i] += (mdx / (d+1)) * infl * dir;
-      _dispVY[i] += (mdy / (d+1)) * infl * dir;
+      const d    = Math.sqrt(d2);
+      const t    = 1 - d / rad;
+      infl       = t * t;
+      const safeD = d + 0.5;
+
+      if (_reforming) {
+        // Reform: gentle attract to guide particles toward home region
+        _dispVX[i] += (-mdx / safeD) * infl * 0.5;
+        _dispVY[i] += (-mdy / safeD) * infl * 0.5;
+      } else if (STATE.magnetMode) {
+        // ── ATTRACT: pull particle toward cursor ──────────
+        const ATTR_STR  = 2.2;   // attraction strength
+        const SWIRL_STR = 1.6;   // orbital tangential strength
+        // Normalised direction toward cursor
+        const nx = -mdx / safeD;
+        const ny = -mdy / safeD;
+        // Attract force
+        _dispVX[i] += nx * infl * ATTR_STR;
+        _dispVY[i] += ny * infl * ATTR_STR;
+        // Swirl force (perpendicular to attract = tangential)
+        // (-ny, nx) = 90° counter-clockwise rotation
+        _dispVX[i] += (-ny) * infl * SWIRL_STR;
+        _dispVY[i] += ( nx) * infl * SWIRL_STR;
+      } else {
+        // ── REPEL: default push-away ──────────────────────
+        const REPEL_STR = 1.1;
+        _dispVX[i] += (mdx / safeD) * infl * REPEL_STR;
+        _dispVY[i] += (mdy / safeD) * infl * REPEL_STR;
+      }
     }
 
+    // ── 4. Damping ───────────────────────────────────────
+    _dispVX[i] *= HOME_DAMP;
+    _dispVY[i] *= HOME_DAMP;
+
+    // ── 5. Integrate ─────────────────────────────────────
     _dispPX[i] += _dispVX[i];
     _dispPY[i] += _dispVY[i];
 
-    // Check if reformed
+    // ── Reform convergence check ─────────────────────────
     if (_reforming) {
-      const dx = _dispPX[i]-_dispHX[i], dy = _dispPY[i]-_dispHY[i];
-      if (Math.abs(dx)<0.5 && Math.abs(dy)<0.5 && Math.abs(_dispVX[i])<0.1) allHome++;
+      if (distHome < 1.5 && Math.abs(_dispVX[i]) < 0.12 && Math.abs(_dispVY[i]) < 0.12) {
+        allHome++;
+        // Snap exactly home when close enough — prevents micro-jitter
+        _dispPX[i] = _dispHX[i];
+        _dispPY[i] = _dispHY[i];
+        _dispVX[i] = 0;
+        _dispVY[i] = 0;
+      }
     }
 
-    // ── Dynamic lighting on particles ──
-    const nx = _dispPX[i] / (dispW||1);
-    const ny = _dispPY[i] / (dispH||1);
+    // ── Dynamic lighting ─────────────────────────────────
+    const nx   = _dispPX[i] / (dispW || 1);
+    const ny   = _dispPY[i] / (dispH || 1);
     const spec = _specularLift(nx, ny, _dispZ[i]);
-    let fr = _dispR[i] + spec; if(fr<0)fr=0; if(fr>255)fr=255;
-    let fg = _dispG[i] + spec; if(fg<0)fg=0; if(fg>255)fg=255;
-    let fb = _dispB[i] + spec; if(fb<0)fb=0; if(fb>255)fb=255;
+    let fr = _dispR[i] + spec; if (fr < 0) fr=0; if (fr > 255) fr=255;
+    let fg = _dispG[i] + spec; if (fg < 0) fg=0; if (fg > 255) fg=255;
+    let fb = _dispB[i] + spec; if (fb < 0) fb=0; if (fb > 255) fb=255;
 
     outCtx.fillStyle = `rgb(${fr},${fg},${fb})`;
     outCtx.fillRect(_dispPX[i]|0, _dispPY[i]|0, px, px);
@@ -1940,12 +2116,12 @@ function _runDisperseLoop() {
     if (infl > 0.05) glowP.push(i, _dispPX[i]|0, _dispPY[i]|0, fr, fg, fb, infl);
   }
 
-  // Glow pass for cursor-near particles (capped at 50)
+  // ── Glow pass — capped at 50 blocks ─────────────────────
   const GLOW_CAP_DISP = 50, glowStride = 7;
-  const gc = Math.min(GLOW_CAP_DISP, (glowP.length/glowStride)|0);
+  const gc = Math.min(GLOW_CAP_DISP, (glowP.length / glowStride) | 0);
   if (gc > 0) {
-    for (let gi=0; gi<gc; gi++) {
-      const b = gi*glowStride;
+    for (let gi = 0; gi < gc; gi++) {
+      const b = gi * glowStride;
       outCtx.shadowColor = `hsla(${hue},80%,65%,${(glowP[b+6]*0.7).toFixed(2)})`;
       outCtx.shadowBlur  = glowP[b+6] * 12;
       outCtx.fillStyle   = `rgb(${glowP[b+3]},${glowP[b+4]},${glowP[b+5]})`;
@@ -1954,13 +2130,12 @@ function _runDisperseLoop() {
     outCtx.shadowBlur = 0;
   }
 
-  // Auto-exit reform when all particles home
+  // ── Auto-exit reform when all particles home ─────────────
   if (_reforming && allHome === _dispN) {
-    _reforming = false;
+    _reforming  = false;
     STATE.disperseMode = false;
     cancelAnimationFrame(_dispAnimFrame);
     _dispAnimFrame = null;
-    // Resume normal depth rendering
     if (STATE.originalImage) render();
     if (STATE.mode === 'image') _startDepthImageLoop();
   }
